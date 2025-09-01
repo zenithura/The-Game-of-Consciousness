@@ -1,0 +1,77 @@
+taylı Oyun Açıklaması: Elma Toplama Oyunu
+Oyun Mekanikleri
+1. Temel Oynanış
+Amaç: Rastgele oluşturulan haritadaki tüm elmaları toplamak
+Kontrol:
+Klavye (ok tuşları veya WASD)
+Fare ile kaydırma (swipe) hareketi
+Görüş Sistemi:
+Oyuncu sadece etrafındaki 3x3'lük alanı görebilir
+Görülemeyen alanlar siyah olarak gösterilir
+Daha önce görülen alanlar soluk renklerle mini haritada gösterilir
+2. Kaynak Yönetimi
+Enerji Sistemi:
+Her hareket 1 enerji harcar
+Elma toplamak +3 enerji kazandırır
+Maksimum enerji 100
+Enerji 0 olduğunda oyun biter
+3. Dünya ve Harita
+Dünya Boyutu: 100x100 hücre
+Engeller:
+Dünyanın %8'ini kaplayan kayalar
+Geçilemez yapılar
+Elmalar:
+Dünyanın %10'u kadar elma bulunur (yaklaşık 1000 elma)
+Her elma 10 puan değerinde
+4. Mini Harita Sistemi
+Konum: Ekranın sağ üst köşesinde
+Gösterilenler:
+Keşfedilmiş alanlar (soluk renklerle)
+Şu anki görüş alanı (parlak renklerle)
+Kayalar (gri)
+Görülen elmalar (kırmızı noktalar)
+Oyuncu konumu (sarı kare)
+Özellikler:
+Görülen elmalar toplanana kadar mini haritada kalır
+Keşfedilen ancak şu an görünmeyen alanlar soluk renklerle gösterilir
+5. Oyun İçi Arayüz
+Üst Bilgi Çubuğu:
+Sol tarafta enerji çubuğu
+Ortada kalan elma sayısı
+Sağ tarafta mevcut skor
+Alt Bilgi Çubuğu:
+Oyun kontrolleri hakkında ipuçları
+Elma toplama mekaniği açıklaması
+6. Oyun Durumları
+Normal Oynanış:
+Oyuncu hareket eder, elma toplar
+Enerji yönetimi yapar
+Kazanma Durumu:
+Tüm elmalar toplandığında tetiklenir
+Tebrik mesajı ve skor gösterilir
+Kaybetme Durumu:
+Enerji sıfırlandığında tetiklenir
+Kaybetme mesajı ve son skor gösterilir
+7. Kontroller
+Klavye:
+Yön tuşları veya WASD: Hareket
+R veya Boşluk: Oyunu yeniden başlat
+ESC: Oyundan çık
+Fare:
+Kaydırma hareketi ile yönlendirme
+Minimum kaydırma mesafesi: 35 piksel
+8. Teknik Özellikler
+Çözünürlük Desteği:
+Farklı ekran boyutlarına uyumlu arayüz
+Ölçeklendirilebilir UI elementleri
+Performans:
+Sadece görünür alanı çizerek optimizasyon
+15 FPS hedef hız
+9. Strateji İpuçları
+Elmaları verimli toplamak için rota planlaması yapın
+Enerjiyi dikkatli kullanın, özellikle elma bulamadığınız bölgelerde
+Mini haritayı kullanarak keşfedilmemiş bölgelere yönelin
+Kayalık alanlarda sıkışıp kalmamaya dikkat edin
+Bu detaylı açıklama, oyunun tün mekaniklerini ve özelliklerini kapsamaktadır. Oyun, basit görünümlü olmasına rağmen derin bir strateji ve kaynak yönetimi deneyimi sunmaktadır.
+
+Feedback submitted

@@ -1,0 +1,513 @@
+import pygame
+import random
+import sys
+import os
+
+# Pygame başlatma
+pygame.init()
+
+# Ekran ayarları - tam ekran
+info = pygame.display.Info()
+SCREEN_WIDTH = info.current_w
+SCREEN_HEIGHT = info.current_h
+VISIBLE_GRID = 3  # Görüş alanı (3x3)
+
+# Ekran boyutuna göre ölçeklendirme faktörü
+BASE_WIDTH = 1280  # Referans genişlik (Yatay)
+BASE_HEIGHT = 800  # Referans yükseklik (Yatay)
+SCALE_FACTOR = min(SCREEN_WIDTH / BASE_WIDTH, SCREEN_HEIGHT / BASE_HEIGHT)
+
+# Minimum ve maksimum ölçeklendirme faktörü
+SCALE_FACTOR = max(0.8, min(SCALE_FACTOR, 2.0))
+
+# Grid boyutu
+GRID_SIZE = int(100 * SCALE_FACTOR)
+
+# Font boyutlarını ölçeklendir
+FONT_SIZE_SMALL = max(16, int(18 * SCALE_FACTOR))
+FONT_SIZE_NORMAL = max(20, int(22 * SCALE_FACTOR))
+FONT_SIZE_LARGE = max(24, int(28 * SCALE_FACTOR))
+
+screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.FULLSCREEN)
+pygame.display.set_caption("Elma Toplama Oyunu")
+
+# Renkler
+BLACK = (0, 0, 0)
+WHITE = (255, 255, 255)
+RED = (255, 0, 0)
+GREEN = (0, 255, 0)
+BLUE = (0, 120, 255)
+BROWN = (139, 69, 19)
+YELLOW = (255, 255, 0)
+GRAY = (100, 100, 100)
+LIGHT_BLUE = (173, 216, 230)
+DARK_GREEN = (0, 150, 0)
+LIGHT_GRAY = (200, 200, 200)
+ROCK_COLOR = (169, 169, 169)  # Kayalar için renk
+
+# Oyun değişkenleri
+WORLD_SIZE = 100  # Daha büyük dünya
+
+
+world_map = []  # Dünya haritası
+visited_map = [] # Görülen alanları takip etmek için
+seen_apples = [] # Görülen elmaları takip etmek için
+move_counter = 0 # Hareket sayacı
+player_pos = [0, 0]  # Başlangıç pozisyonu, generate_world içinde ayarlanacak
+energy = 50
+MAX_ENERGY = 100
+score = 0
+apples = []
+total_apples = int(WORLD_SIZE * WORLD_SIZE * 0.1)  # Ekran boyutuna göre elma sayısı
+game_over = False  # Game over durumunu takip etmek için
+font = pygame.font.SysFont(None, FONT_SIZE_NORMAL)
+large_font = pygame.font.SysFont(None, FONT_SIZE_LARGE)
+small_font = pygame.font.SysFont(None, FONT_SIZE_SMALL)
+
+def update_visited_map():
+    """Oyuncunun görüş alanındaki hücreleri ziyaret edilmiş olarak günceller."""
+    global move_counter
+    move_counter += 1
+    start_x = player_pos[0] - VISIBLE_GRID // 2
+    start_y = player_pos[1] - VISIBLE_GRID // 2
+    for y_offset in range(VISIBLE_GRID):
+        for x_offset in range(VISIBLE_GRID):
+            world_x = start_x + x_offset
+            world_y = start_y + y_offset
+            if 0 <= world_x < WORLD_SIZE and 0 <= world_y < WORLD_SIZE:
+                visited_map[world_y][world_x] = move_counter
+                # Görüş alanındaki elmaları kaydet
+                if [world_x, world_y] in apples and [world_x, world_y] not in seen_apples:
+                    seen_apples.append([world_x, world_y])
+
+def generate_world():
+    """Dünya haritasını oluşturur, engelleri, elmaları ve oyuncuyu yerleştirir."""
+    global world_map, apples, player_pos, score, energy, game_over, visited_map, seen_apples
+
+    # Haritayı ve ziyaret edilen haritayı sıfırla
+    world_map = [[0 for _ in range(WORLD_SIZE)] for _ in range(WORLD_SIZE)]
+    visited_map = [[0 for _ in range(WORLD_SIZE)] for _ in range(WORLD_SIZE)]
+    seen_apples = []
+
+    # Engelleri yerleştir
+    num_obstacles = int(WORLD_SIZE * WORLD_SIZE * 0.08)  # Engellerin sayısı
+    for _ in range(num_obstacles):
+        while True:
+            pos = [random.randint(0, WORLD_SIZE - 1), random.randint(0, WORLD_SIZE - 1)]
+            if world_map[pos[1]][pos[0]] == 0:
+                world_map[pos[1]][pos[0]] = 1  # 1 engel demek
+                break
+
+    # Oyuncu başlangıç pozisyonunu ayarla (engelin üzerinde olmasın)
+    while True:
+        pos = [random.randint(0, WORLD_SIZE - 1), random.randint(0, WORLD_SIZE - 1)]
+        if world_map[pos[1]][pos[0]] == 0:
+            player_pos = pos
+            break
+    
+    update_visited_map() # Başlangıç pozisyonunu güncelle
+
+    # Elmaları yerleştir (engellerin veya oyuncunun üzerinde olmasın)
+    apples = []
+    for _ in range(total_apples):
+        while True:
+            apple_pos = [random.randint(0, WORLD_SIZE - 1), random.randint(0, WORLD_SIZE - 1)]
+            if world_map[apple_pos[1]][apple_pos[0]] == 0 and apple_pos != player_pos and apple_pos not in apples:
+                apples.append(apple_pos)
+                break
+
+# Oyunu başlatmak için haritayı oluştur
+generate_world()
+
+"""
+Ekranda buton yok. Kontrol:
+- Klavye (oklar/WASD)
+- Kaydırma (mouse/touch): aşağıdaki eşik ile tek kare hareket
+"""
+
+# Kaydırma (swipe) ayarları
+SWIPE_THRESHOLD = max(20, int(35 * SCALE_FACTOR))  # piksel
+touch_start_pos = None
+touch_start_time = 0
+
+# Alt boşluk (mini harita için)
+BOTTOM_PADDING = int(30 * SCALE_FACTOR)
+
+# Bilgi paneli boyutları
+panel_height = int(40 * SCALE_FACTOR)
+panel_padding = int(10 * SCALE_FACTOR)
+
+# Mini harita ayarları (artık kontrol düğmesi yok)
+# Sağ üstte, üst bilgi panelinin altında; alt kısımda bir miktar boşluk bırakarak ölçeklendir.
+available_width = int(SCREEN_WIDTH * 0.35)  # Ekranın sağında kaplayabileceği max genişlik
+available_height = max(
+    50,
+    SCREEN_HEIGHT - (panel_height + 2 * panel_padding) - BOTTOM_PADDING
+)
+
+# Hücre başına piksel ölçeğini dünya boyutuna göre belirle
+max_scale_by_width = max(1, available_width // WORLD_SIZE)
+max_scale_by_height = max(1, available_height // WORLD_SIZE)
+MINIMAP_SCALE = max(2, min(6, min(max_scale_by_width, max_scale_by_height)))  # 2-6 px arası sınırla
+
+MINIMAP_WIDTH = WORLD_SIZE * MINIMAP_SCALE
+MINIMAP_HEIGHT = WORLD_SIZE * MINIMAP_SCALE
+MINIMAP_X = SCREEN_WIDTH - MINIMAP_WIDTH - panel_padding  # Sağdan hizalı
+MINIMAP_Y = panel_height + panel_padding
+MINIMAP_PLAYER_COLOR = YELLOW
+MINIMAP_VIEW_COLOR = WHITE
+
+# Ekranda yeniden başlatma butonu yok; R veya Space ile yeniden başlatılır.
+
+def draw_button(rect, color, text, text_color=BLACK, pressed=False):
+    # Basılı efekti
+    draw_rect = rect.copy()
+    if pressed:
+        draw_rect.y += 2
+        pygame.draw.rect(screen, GRAY, draw_rect, border_radius=15)
+    else:
+        # Gölge efekti
+        shadow_rect = rect.copy()
+        shadow_rect.y += 3
+        pygame.draw.rect(screen, GRAY, shadow_rect, border_radius=15)
+        pygame.draw.rect(screen, color, rect, border_radius=15)
+    
+    # Border
+    pygame.draw.rect(screen, BLACK, draw_rect, 3, border_radius=15)
+    
+    # Text
+    text_surf = large_font.render(text, True, text_color)
+    text_rect = text_surf.get_rect(center=draw_rect.center)
+    screen.blit(text_surf, text_rect)
+
+def draw_energy_bar():
+    # Enerji çubuğu boyutlarını ölçeklendir
+    bar_width = int(180 * SCALE_FACTOR)
+    bar_height = int(25 * SCALE_FACTOR)
+    bar_x = panel_padding
+    bar_y = (panel_height - bar_height) // 2
+    
+    # Enerji çubuğu arka planı
+    pygame.draw.rect(screen, (20, 20, 20), (bar_x, bar_y, bar_width, bar_height), border_radius=int(8 * SCALE_FACTOR))
+    
+    # Enerji çubuğu
+    energy_width = max(0, (bar_width - 4) * energy / MAX_ENERGY)
+    color = GREEN if energy > 5 else (YELLOW if energy > 2 else RED)
+    pygame.draw.rect(screen, color, 
+                    (bar_x + 2, bar_y + 2, energy_width, bar_height - 4), 
+                    border_radius=int(6 * SCALE_FACTOR))
+    
+    # Enerji yazısı
+    label = small_font.render("ENERJİ", True, WHITE)
+    value = small_font.render(str(energy), True, WHITE)
+    text_y = bar_y + (bar_height - label.get_height()) // 2
+    screen.blit(label, (bar_x + 10, text_y))
+    # Değeri sağa hizala
+    value_y = bar_y + (bar_height - value.get_height()) // 2
+    screen.blit(value, (bar_x + bar_width - value.get_width() - 10, value_y))
+
+def draw_score():
+    # Rozet/pill arka planı ile skor
+    text = small_font.render(f"SKOR: {score}", True, WHITE)
+    score_x = panel_padding * 2 + int(190 * SCALE_FACTOR)  # Enerji çubuğundan sonra
+    score_y = (panel_height - text.get_height()) // 2
+    pad_x = int(10 * SCALE_FACTOR)
+    pad_y = int(6 * SCALE_FACTOR)
+    bg_rect = pygame.Rect(score_x, score_y - pad_y, text.get_width() + 2 * pad_x, text.get_height() + 2 * pad_y)
+    pygame.draw.rect(screen, (0, 120, 0), bg_rect, border_radius=14)
+    pygame.draw.rect(screen, (0, 80, 0), bg_rect, 2, border_radius=14)
+    screen.blit(text, (score_x + pad_x, score_y))
+
+def calculate_closest_apple_distance():
+    if not apples:
+        return -1
+    
+    min_distance = float('inf')
+    for apple in apples:
+        distance = abs(player_pos[0] - apple[0]) + abs(player_pos[1] - apple[1])
+        min_distance = min(min_distance, distance)
+    
+    return min_distance
+
+def draw_info_panel():
+    # Üst panel arka planı
+    pygame.draw.rect(screen, DARK_GREEN, (0, 0, SCREEN_WIDTH, panel_height))
+    
+    # Enerji barı
+    draw_energy_bar()
+    
+    # Skor
+    draw_score()
+
+    # Orta: Kalan elma sayısı
+    apples_left = len(apples)
+    center_text = f"Elma: {apples_left}"
+    title_surf = font.render(center_text, True, WHITE)
+    title_rect = title_surf.get_rect(center=(SCREEN_WIDTH // 2, panel_height // 2))
+    screen.blit(title_surf, title_rect)
+
+    # Sağ tarafta artık buton yok; ipucu metni panelin sağında gösterilebilir.
+    hint = small_font.render("R/Space: Yenile  •  ESC: Çıkış", True, WHITE)
+    hint_rect = hint.get_rect(midright=(SCREEN_WIDTH - panel_padding, panel_height // 2))
+    screen.blit(hint, hint_rect)
+
+def check_win_condition():
+    # Tüm elmalar toplandı mı?
+    return len(apples) == 0
+
+def draw_win_screen():
+    # Yarı şeffaf overlay
+    overlay = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
+    overlay.fill((0, 0, 0, 200))
+    screen.blit(overlay, (0, 0))
+    
+    # Win ekranı
+    win_bg = pygame.Rect(50, SCREEN_HEIGHT//2 - 100, SCREEN_WIDTH - 100, 200)
+    pygame.draw.rect(screen, WHITE, win_bg, border_radius=20)
+    pygame.draw.rect(screen, BLACK, win_bg, 3, border_radius=20)
+    
+    win_text = large_font.render("TEBRİKLER!", True, GREEN)
+    complete_text = font.render("Tüm elmaları topladınız!", True, BLACK)
+    score_text = font.render(f"Final Skor: {score}", True, BLACK)
+    restart_text = small_font.render("YENİLE butonuna basarak", True, BLACK)
+    restart_text2 = small_font.render("yeniden başlayın", True, BLACK)
+    
+    screen.blit(win_text, (SCREEN_WIDTH // 2 - win_text.get_width() // 2, 
+                          SCREEN_HEIGHT // 2 - 70))
+    screen.blit(complete_text, (SCREEN_WIDTH // 2 - complete_text.get_width() // 2, 
+                               SCREEN_HEIGHT // 2 - 40))
+    screen.blit(score_text, (SCREEN_WIDTH // 2 - score_text.get_width() // 2, 
+                            SCREEN_HEIGHT // 2 - 10))
+    screen.blit(restart_text, (SCREEN_WIDTH // 2 - restart_text.get_width() // 2, 
+                              SCREEN_HEIGHT // 2 + 20))
+    screen.blit(restart_text2, (SCREEN_WIDTH // 2 - restart_text2.get_width() // 2, 
+                               SCREEN_HEIGHT // 2 + 40))
+
+def draw_game():
+    # Arka planı temizle
+    screen.fill(LIGHT_BLUE)
+
+    # Görünür gridin başlangıç koordinatları (dünya üzerinde)
+    start_x = player_pos[0] - VISIBLE_GRID // 2
+    start_y = player_pos[1] - VISIBLE_GRID // 2
+
+    # Grid'i ve içindekileri çiz
+    for y_offset in range(VISIBLE_GRID):
+        for x_offset in range(VISIBLE_GRID):
+            world_x = start_x + x_offset
+            world_y = start_y + y_offset
+
+            # Grid hücresinin ekrandaki konumu
+            screen_x = (SCREEN_WIDTH - VISIBLE_GRID * GRID_SIZE) // 2 + x_offset * GRID_SIZE
+            screen_y = (SCREEN_HEIGHT - VISIBLE_GRID * GRID_SIZE) // 2 + y_offset * GRID_SIZE
+            
+            cell_rect = pygame.Rect(screen_x, screen_y, GRID_SIZE, GRID_SIZE)
+
+            # Dünya sınırları içinde mi kontrol et
+            if 0 <= world_x < WORLD_SIZE and 0 <= world_y < WORLD_SIZE:
+                # Zemin veya engel çizimi
+                if world_map[world_y][world_x] == 1:  # Engel (kaya)
+                    pygame.draw.rect(screen, ROCK_COLOR, cell_rect)
+                else:  # Zemin
+                    pygame.draw.rect(screen, DARK_GREEN, cell_rect)
+
+                # Elmayı çiz
+                if [world_x, world_y] in apples:
+                    # Elma gövdesi
+                    pygame.draw.circle(screen, RED, cell_rect.center, GRID_SIZE // 3)
+                    # Elma sapı
+                    pygame.draw.circle(screen, BROWN, (cell_rect.centerx, cell_rect.centery - GRID_SIZE // 4), 3)
+
+                # Oyuncuyu çiz
+                if [world_x, world_y] == player_pos:
+                    pygame.draw.rect(screen, BLUE, cell_rect.inflate(-10, -10), border_radius=10)
+                    # Gözler
+                    eye_size = max(3, GRID_SIZE // 15)
+                    eye1_x = cell_rect.centerx - GRID_SIZE // 4
+                    eye2_x = cell_rect.centerx + GRID_SIZE // 4
+                    eye_y = cell_rect.centery - GRID_SIZE // 8
+                    pygame.draw.circle(screen, WHITE, (eye1_x, eye_y), eye_size)
+                    pygame.draw.circle(screen, WHITE, (eye2_x, eye_y), eye_size)
+            else:
+                # Sınırların dışında siyah boşluk çiz
+                pygame.draw.rect(screen, BLACK, cell_rect)
+
+            # Her hücre için grid çizgisi
+            pygame.draw.rect(screen, GRAY, cell_rect, 1)
+
+    # Bilgi panelini ve kontrol düğmelerini çiz
+    draw_info_panel()
+
+    # Oyun ipucu: ekranın alt-orta kısmında
+    info_text = "Kırmızı elmaları topla! Her elma +3 enerji — Yön tuşları/WASD veya kaydır"
+    text_surface = small_font.render(info_text, True, BLACK)
+    text_rect = text_surface.get_rect(midbottom=(SCREEN_WIDTH // 2, SCREEN_HEIGHT - BOTTOM_PADDING))
+    screen.blit(text_surface, text_rect)
+
+def draw_minimap():
+    """Oyunun mini haritasını savaş sisi ile çizer."""
+    minimap_surface = pygame.Surface((MINIMAP_WIDTH, MINIMAP_HEIGHT))
+    minimap_surface.fill(BLACK) # Görülmeyen alanlar siyah
+
+    for y in range(WORLD_SIZE):
+        for x in range(WORLD_SIZE):
+            visited_time = visited_map[y][x]
+            if visited_time > 0: # Eğer hücre daha önce görüldüyse
+                rect = pygame.Rect(x * MINIMAP_SCALE, y * MINIMAP_SCALE, MINIMAP_SCALE, MINIMAP_SCALE)
+                
+                # Renkleri belirle
+                base_color = ROCK_COLOR if world_map[y][x] == 1 else DARK_GREEN
+                
+                # Mevcut görüş alanında mı?
+                if move_counter == visited_time:
+                    # Parlak renk
+                    final_color = base_color
+                else:
+                    # Soluk renk (keşfedilmiş ama şu an görünmüyor)
+                    final_color = tuple(c * 0.3 for c in base_color)
+                
+                pygame.draw.rect(minimap_surface, final_color, rect)
+                
+                # Görülen ve hala mevcut olan elmaları çiz
+                if [x, y] in seen_apples and [x, y] in apples:
+                    pygame.draw.circle(minimap_surface, RED, rect.center, max(1, MINIMAP_SCALE // 3))
+
+    # Oyuncunun pozisyonunu her zaman parlak çiz
+    player_rect = pygame.Rect(player_pos[0] * MINIMAP_SCALE, player_pos[1] * MINIMAP_SCALE, MINIMAP_SCALE, MINIMAP_SCALE)
+    pygame.draw.rect(minimap_surface, MINIMAP_PLAYER_COLOR, player_rect)
+
+    # Mini haritayı ana ekrana çiz
+    screen.blit(minimap_surface, (MINIMAP_X, MINIMAP_Y))
+    
+    # Mini harita çerçevesi
+    pygame.draw.rect(screen, WHITE, (MINIMAP_X, MINIMAP_Y, MINIMAP_WIDTH, MINIMAP_HEIGHT), 2)
+
+def draw_game_over():
+    # Yarı şeffaf overlay
+    overlay = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
+    overlay.fill((0, 0, 0, 200))
+    screen.blit(overlay, (0, 0))
+    
+    # Game over ekranı
+    game_over_bg = pygame.Rect(50, SCREEN_HEIGHT//2 - 100, SCREEN_WIDTH - 100, 200)
+    pygame.draw.rect(screen, WHITE, game_over_bg, border_radius=20)
+    pygame.draw.rect(screen, BLACK, game_over_bg, 3, border_radius=20)
+    
+    game_over_text = large_font.render("ENERJİ BİTTİ!", True, RED)
+    score_text = font.render(f"Final Skor: {score}", True, BLACK)
+    apples_left_text = font.render(f"Kalan Elma: {len(apples)}", True, BLACK)
+    restart_text = small_font.render("YENİLE butonuna basarak", True, BLACK)
+    restart_text2 = small_font.render("yeniden başlayın", True, BLACK)
+    
+    screen.blit(game_over_text, (SCREEN_WIDTH // 2 - game_over_text.get_width() // 2, 
+                                SCREEN_HEIGHT // 2 - 70))
+    screen.blit(score_text, (SCREEN_WIDTH // 2 - score_text.get_width() // 2, 
+                            SCREEN_HEIGHT // 2 - 40))
+    screen.blit(apples_left_text, (SCREEN_WIDTH // 2 - apples_left_text.get_width() // 2, 
+                                  SCREEN_HEIGHT // 2 - 15))
+    screen.blit(restart_text, (SCREEN_WIDTH // 2 - restart_text.get_width() // 2, 
+                              SCREEN_HEIGHT // 2 + 10))
+    screen.blit(restart_text2, (SCREEN_WIDTH // 2 - restart_text2.get_width() // 2, 
+                               SCREEN_HEIGHT // 2 + 30))
+
+def move_player(dx, dy):
+    global energy, player_pos, score, game_over
+    
+    # Enerji kontrolü
+    if energy <= 0 or game_over:
+        return
+    
+    # Yeni pozisyon
+    new_x = player_pos[0] + dx
+    new_y = player_pos[1] + dy
+    
+    # Dünya sınırları ve engel kontrolü
+    if 0 <= new_x < WORLD_SIZE and 0 <= new_y < WORLD_SIZE and world_map[new_y][new_x] == 0:
+        player_pos = [new_x, new_y]
+        energy -= 1
+        update_visited_map() # Hareket sonrası görülen alanı güncelle
+        
+        # Elma toplama (enerji kontrolünden ÖNCE)
+        if player_pos in apples:
+            apples.remove(player_pos)
+            if player_pos in seen_apples: # Görülen elmalardan da kaldır
+                seen_apples.remove(player_pos)
+            energy = min(energy + 3, MAX_ENERGY)
+            score += 10
+        
+        # Enerji bitince game over durumunu ayarla (elma topladıktan SONRA kontrol et)
+        if energy <= 0:
+            game_over = True
+
+def restart_game():
+    """Oyunu yeniden başlatır."""
+    global energy, score, game_over, move_counter, seen_apples
+    energy = 15
+    score = 0
+    game_over = False
+    move_counter = 0
+    seen_apples = []
+    generate_world()  # Haritayı, elmaları ve oyuncuyu yeniden oluştur
+
+# Oyun döngüsü
+clock = pygame.time.Clock()
+running = True
+pressed_button = None  # Kullanılmıyor; geriye dönük tanım. İleride kaldırılabilir.
+
+while running:
+    # Kazanma durumunu kontrol et
+    won = check_win_condition()
+    
+    for event in pygame.event.get():
+        if event.type == pygame.QUIT:
+            running = False
+        elif event.type == pygame.KEYDOWN:
+            if not won:  # Sadece kazanmadıysa hareket et
+                if event.key == pygame.K_UP or event.key == pygame.K_w:
+                    move_player(0, -1)
+                elif event.key == pygame.K_DOWN or event.key == pygame.K_s:
+                    move_player(0, 1)
+                elif event.key == pygame.K_LEFT or event.key == pygame.K_a:
+                    move_player(-1, 0)
+                elif event.key == pygame.K_RIGHT or event.key == pygame.K_d:
+                    move_player(1, 0)
+            if event.key == pygame.K_r or event.key == pygame.K_SPACE:
+                restart_game()
+            elif event.key == pygame.K_ESCAPE:  # ESC tuşu ile çıkış
+                running = False
+        elif event.type == pygame.MOUSEBUTTONDOWN:
+            # Kaydırma başlangıcı
+            touch_start_pos = event.pos
+            touch_start_time = pygame.time.get_ticks()
+        elif event.type == pygame.MOUSEBUTTONUP:
+            # Kaydırma sonu: yönü belirle ve bir kere hareket et
+            if touch_start_pos is not None and not won:
+                end_pos = event.pos
+                dx = end_pos[0] - touch_start_pos[0]
+                dy = end_pos[1] - touch_start_pos[1]
+                if abs(dx) >= SWIPE_THRESHOLD or abs(dy) >= SWIPE_THRESHOLD:
+                    if abs(dx) > abs(dy):
+                        move_player(1 if dx > 0 else -1, 0)
+                    else:
+                        move_player(0, 1 if dy > 0 else -1)
+            touch_start_pos = None
+            touch_start_time = 0
+    
+    # Oyunu çiz
+    draw_game()
+    draw_minimap() # Mini haritayı çiz
+    
+    # Win durumunda kazanma ekranını çiz
+    if won:
+        draw_win_screen()
+    # Game over durumunda overlay'i çiz
+    elif game_over:
+        draw_game_over()
+    
+    # Ekranda buton çizimi yok
+    
+    pygame.display.flip()
+    clock.tick(15)  # Biraz daha hızlı
+
+pygame.quit()
+sys.exit()
